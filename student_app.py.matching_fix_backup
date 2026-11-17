@@ -1,0 +1,322 @@
+"""Modern offline student exam client using pywebview + HTML/CSS.
+
+Preserves the existing exam package format and encrypted submission workflow.
+"""
+import json
+import os
+import tempfile
+import time
+import uuid
+from pathlib import Path
+
+import webview
+from agentic_exam.exam_package import open_exam_package
+from agentic_exam.crypto_utils import encrypt_submission
+
+APP_TITLE = "Agentic AI Examination | MAJU"
+
+HTML = r'''<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agentic AI Examination</title>
+<style>
+:root{--navy:#102544;--navy2:#18385f;--blue:#2563eb;--blue2:#eaf1ff;--ink:#17253c;--muted:#64748b;--line:#dbe3ef;--bg:#f3f6fb;--white:#fff;--green:#16845b;--amber:#a16207;--shadow:0 10px 32px rgba(16,37,68,.08)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",Arial,sans-serif}button,input,textarea{font:inherit}button{cursor:pointer;border:0;border-radius:10px;padding:11px 16px;font-weight:650;transition:.15s}button:disabled{opacity:.45;cursor:not-allowed}.primary{background:var(--blue);color:white}.primary:hover{background:#1d4ed8}.secondary{background:white;color:var(--navy);border:1px solid var(--line)}.danger{background:#fff1f2;color:#be123c;border:1px solid #fecdd3}.shell{min-height:100vh}.topbar{background:var(--navy);color:#fff;padding:16px 26px;display:flex;align-items:center;justify-content:space-between;gap:20px;box-shadow:0 3px 12px #10254420}.brand{display:flex;gap:12px;align-items:center}.logo{width:42px;height:42px;border-radius:12px;background:#2d5da8;display:grid;place-items:center;font-size:21px;font-weight:800}.brand h1{font-size:17px;margin:0}.brand small{color:#c7d6ec}.timer{border:1px solid #ffffff42;background:#ffffff12;border-radius:12px;padding:8px 14px;font-variant-numeric:tabular-nums;font-weight:750}.container{max-width:1440px;margin:24px auto;padding:0 22px}.welcome{max-width:760px;margin:7vh auto;background:#fff;padding:38px;border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow)}.eyebrow{color:var(--blue);text-transform:uppercase;letter-spacing:.12em;font-size:12px;font-weight:800}.welcome h2{font-size:32px;line-height:1.2;color:var(--navy);margin:10px 0}.welcome p{color:var(--muted)}.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:25px 0}.step{border:1px solid var(--line);background:#f8faff;border-radius:12px;padding:14px;font-size:13px}.step b{display:block;color:var(--navy);margin-bottom:5px}.layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:20px}.panel,.question-card{background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}.panel{padding:18px;height:max-content;position:sticky;top:18px}.panel h3{margin:0 0 5px;font-size:16px}.muted{color:var(--muted)}.small{font-size:12px}.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin:17px 0}.stat{padding:12px;background:#f6f8fc;border-radius:12px}.stat b{font-size:22px;display:block;color:var(--navy)}.progress{height:7px;background:#e8edf5;border-radius:20px;overflow:hidden;margin:8px 0 18px}.progress>div{height:100%;background:var(--blue);transition:width .2s}.palette{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin:12px 0 18px}.qnum{padding:0;height:39px;border:1px solid var(--line);background:#fff;color:#41516a;border-radius:9px;font-size:13px}.qnum.current{outline:2px solid var(--blue);border-color:var(--blue);background:var(--blue2);color:#1746a2}.qnum.answered{background:#e5f7ef;border-color:#a9e3c9;color:#116746}.qnum.review{box-shadow:inset 0 -4px #f59e0b}.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted)}.dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:4px}.maincol{min-width:0}.exam-heading{display:flex;align-items:center;justify-content:space-between;gap:15px;margin:0 0 15px}.exam-heading h2{margin:0;color:var(--navy);font-size:22px}.question-card{padding:clamp(20px,3vw,34px);min-height:430px}.qmeta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px}.pill{font-size:12px;font-weight:750;padding:5px 9px;border-radius:20px;background:#eaf1ff;color:#1d4ed8}.pill.gray{background:#f0f3f8;color:#56657b}.marks{margin-left:auto;color:var(--muted);font-size:13px}.prompt{font-size:21px;font-weight:700;line-height:1.45;color:var(--navy);margin:0 0 20px;white-space:pre-wrap}.option{display:flex;align-items:flex-start;gap:12px;padding:14px 15px;border:1px solid var(--line);border-radius:12px;margin:9px 0;cursor:pointer;background:#fff}.option:hover{border-color:#8eb1f9;background:#f9fbff}.option.selected{border-color:var(--blue);background:var(--blue2);box-shadow:0 0 0 1px var(--blue) inset}.radio{width:20px;height:20px;border:1.5px solid #9aa9bd;border-radius:50%;flex:none;display:grid;place-items:center;margin-top:1px}.selected .radio{border-color:var(--blue)}.selected .radio:after{content:"";width:10px;height:10px;background:var(--blue);border-radius:50%}.answer-input,textarea{width:100%;padding:14px;border:1px solid #cbd5e1;border-radius:12px;outline:none;background:#fbfcff}.answer-input:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px #2563eb18}textarea{min-height:160px;resize:vertical}.question-image{max-width:min(100%,760px);max-height:360px;object-fit:contain;display:block;border:1px solid var(--line);border-radius:12px;margin:15px 0;cursor:zoom-in;background:#f8fafc}.opt-img{max-width:150px;max-height:100px;object-fit:contain;display:block;margin-top:8px}.qfoot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}.actions{display:flex;gap:9px;flex-wrap:wrap}.reviewbtn{background:#fff8e7;color:#92400e;border:1px solid #f5d48a}.statusline{font-size:12px;color:var(--green);margin-top:12px;min-height:18px}.review-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.review-item{border:1px solid var(--line);border-radius:12px;padding:14px;background:white}.review-item h4{margin:0 0 8px}.review-item p{margin:0 0 12px;color:var(--muted);font-size:13px}.modal{position:fixed;inset:0;background:#081326e8;display:none;align-items:center;justify-content:center;padding:25px;z-index:10}.modal.open{display:flex}.modal img{max-width:95vw;max-height:90vh;object-fit:contain}.modal button{position:absolute;top:20px;right:20px}.toast{position:fixed;bottom:18px;right:20px;background:#102544;color:white;padding:12px 16px;border-radius:10px;box-shadow:var(--shadow);display:none;z-index:20}.hidden{display:none!important}@media(max-width:850px){.layout{grid-template-columns:1fr}.panel{position:static;order:2}.palette{grid-template-columns:repeat(8,1fr)}.question-card{min-height:0}.steps{grid-template-columns:1fr}.topbar{padding:13px 16px}.container{padding:0 12px}.prompt{font-size:19px}}@media(max-width:480px){.palette{grid-template-columns:repeat(6,1fr)}.qfoot{align-items:stretch;flex-direction:column}.actions button{flex:1}.welcome{padding:24px;margin:20px 10px}}
+
+.matching-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin-top:16px}
+.matching-column{min-width:0;border:1px solid var(--line);border-radius:12px;padding:12px;background:#f8faff}
+.matching-column h4{margin:0 0 10px;color:var(--navy);font-size:15px}
+.matching-card{width:100%;display:grid;grid-template-columns:42px minmax(0,1fr);gap:8px;align-items:start;text-align:left;padding:10px;margin:7px 0;background:#fff;border:1px solid var(--line);border-radius:9px;color:var(--ink);font-weight:400;white-space:normal}
+.matching-card:hover{border-color:#8eb1f9;background:#f9fbff}
+.matching-card.matching-active{border:2px solid var(--blue);background:var(--blue2)}
+.matching-card.matching-done{border-left:4px solid var(--green)}
+.matching-code{font-weight:800;color:var(--navy)}
+.matching-description{overflow-wrap:anywhere}
+.matching-pair{grid-column:2;font-size:11px;color:var(--muted)}
+.matching-summary{margin-top:12px;font-weight:700;color:var(--navy)}
+@media(max-width:850px){.matching-layout{grid-template-columns:1fr}}
+
+</style></head><body>
+<div class="shell"><header class="topbar"><div class="brand"><div class="logo">AI</div><div><h1>Agentic AI Examination</h1><small>MAJU · Offline Student Portal</small></div></div><div id="timer" class="timer hidden">--:--</div></header>
+<main id="welcome" class="welcome"><div class="eyebrow">Secure offline examination</div><h2>Ready to demonstrate what you know?</h2><p>Open the exam package provided by your instructor. Your responses are saved locally as you work and encrypted when you submit.</p><div class="steps"><div class="step"><b>01 · Open exam</b>Choose the exam package and enter its password.</div><div class="step"><b>02 · Work through</b>Navigate questions, save answers, and flag items to revisit.</div><div class="step"><b>03 · Submit securely</b>Review unanswered questions before creating your encrypted submission.</div></div><button class="primary" onclick="openExam()">Open exam package →</button><div id="welcomeStatus" class="statusline"></div><p class="small">Use only the exam package and instructions supplied by your instructor.</p></main>
+<main id="examView" class="container hidden"><div class="exam-heading"><div><div class="eyebrow" id="examSub">EXAM IN PROGRESS</div><h2 id="examTitle">Midterm examination</h2></div><button class="secondary" onclick="showReview()">Review & submit</button></div><div class="layout"><aside class="panel"><h3>Question navigator</h3><div class="muted small">Select a number to move directly to that question.</div><div class="stats"><div class="stat"><span class="muted small">Answered</span><b id="answeredCount">0</b></div><div class="stat"><span class="muted small">Remaining</span><b id="remainingCount">0</b></div></div><div class="progress"><div id="progressBar" style="width:0"></div></div><div id="palette" class="palette"></div><div class="legend"><span><i class="dot" style="background:#e5f7ef"></i>Answered</span><span><i class="dot" style="background:#eaf1ff"></i>Current</span><span><i class="dot" style="background:#f59e0b"></i>Review</span></div><div class="statusline" id="saveStatus">Answers save automatically on this PC.</div></aside><section class="maincol"><article class="question-card" id="questionCard"></article><div class="qfoot"><div class="muted small" id="footProgress">Question 1</div><div class="actions"><button class="secondary" id="prevBtn" onclick="navigate(-1)">← Previous</button><button class="reviewbtn" id="reviewBtn" onclick="toggleReview()">☆ Mark for review</button><button class="primary" id="nextBtn" onclick="navigate(1)">Save & next →</button></div></div></section></div></main>
+<main id="reviewView" class="container hidden"><div class="exam-heading"><div><div class="eyebrow">FINAL CHECK</div><h2>Review your answers</h2><p class="muted">Select any question to return to it. Unanswered and flagged questions are highlighted.</p></div></div><div class="stats" style="max-width:500px"><div class="stat"><span class="muted small">Answered</span><b id="reviewAnswered">0</b></div><div class="stat"><span class="muted small">Unanswered</span><b id="reviewUnanswered">0</b></div></div><div id="reviewList" class="review-grid"></div><div class="qfoot"><button class="secondary" onclick="backToExam()">← Return to exam</button><div class="actions"><button class="primary" onclick="submitExam()">Confirm & submit encrypted exam</button></div></div></main></div>
+<div id="imageModal" class="modal" onclick="closeImage()"><button class="secondary" onclick="closeImage()">Close ✕</button><img id="modalImage" alt="Zoomed question image"></div><div id="toast" class="toast"></div>
+<script>
+let exam=null,answers={},flags=new Set(),idx=0,deadline=0,timerHandle=null,renderToken=0;
+const $=id=>document.getElementById(id); const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(msg){$('toast').textContent=msg;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',2200)}
+async function openExam(){try{const chosen=await pywebview.api.choose_exam_file();if(!chosen||!chosen.ok||!chosen.path)return;const password=prompt('Enter the exam password:');if(password===null)return;const result=await pywebview.api.open_exam(chosen.path,password);if(!result||!result.ok){if(result&&result.error)alert(result.error);return;}$('welcome').classList.add('hidden');$('examView').classList.remove('hidden');$('timer').classList.remove('hidden');exam=result.exam;answers=result.answers||{};flags=new Set(result.flags||[]);idx=0;deadline=Date.now()+result.remaining_seconds*1000;$('examTitle').textContent=exam.title||'Midterm examination';$('examSub').textContent=(exam.course||'AGENTIC AI SYSTEMS ENGINEERING').toUpperCase();buildPalette();renderQuestion();updateStats();tick();}catch(e){toast('Could not open exam: '+e)}}
+function q(){return exam.questions[idx]} function answered(question){return String(answers[question.id]??'').trim().length>0}
+function buildPalette(){$('palette').innerHTML=exam.questions.map((question,i)=>`<button class="qnum" id="num${i}" onclick="goTo(${i})" title="Question ${i+1}">${i+1}</button>`).join('');updateStats()}
+function updateStats(){if(!exam)return;let n=exam.questions.filter(answered).length;$('answeredCount').textContent=n;$('remainingCount').textContent=exam.questions.length-n;$('progressBar').style.width=(100*n/exam.questions.length)+'%';exam.questions.forEach((question,i)=>{const b=$('num'+i);if(!b)return;b.className='qnum'+(answered(question)?' answered':'')+(flags.has(question.id)?' review':'')+(i===idx?' current':'')});$('footProgress').textContent=`Question ${idx+1} of ${exam.questions.length}`}
+function asset(path){if(!path)return '';const value=String(path);if(/^data:image\//i.test(value)||/^https?:\/\//i.test(value)||value.startsWith('file:///'))return value;return 'file:///'+value.replace(/\\/g,'/').replace(/^\//,'').split('/').map((p,i)=>i===0&&p.endsWith(':')?p:encodeURIComponent(p)).join('/')}
+function imageHtml(path,cls='question-image'){return path?`<img class="${cls}" src="${asset(path)}" onclick="event.stopPropagation();zoomImage(this.src)" alt="Question image" title="Click to zoom">`: ''}
+
+function parseMatchingPrompt(prompt){
+    const lines=String(prompt||'').split(/\r?\n/);
+    let section='';
+    const descriptions=[];
+    const choices=[];
+    for(const raw of lines){
+        const line=raw.trim();
+        if(line==='DESCRIPTIONS'){section='descriptions';continue}
+        if(line==='ANSWER BANK'){section='choices';continue}
+        if(section==='descriptions'){
+            const m=line.match(/^([A-Z]{1,2})\.\s+(.+)$/);
+            if(m)descriptions.push({id:m[1],text:m[2]});
+        }else if(section==='choices'){
+            const m=line.match(/^(\d+)\.\s+(.+)$/);
+            if(m)choices.push({id:m[1],text:m[2]});
+        }
+    }
+    return {descriptions,choices};
+}
+function matchingMap(value){
+    const result={};
+    String(value||'').split(';').forEach(part=>{
+        const m=part.trim().match(/^([A-Z]{1,2})\s*=\s*(\d+)$/);
+        if(m)result[m[1]]=m[2];
+    });
+    return result;
+}
+function matchingInterface(question){
+    const parsed=parseMatchingPrompt(question.prompt);
+    const descriptions=parsed.descriptions;
+    const choices=parsed.choices;
+    if(!descriptions.length||!choices.length){
+        return `<p class="muted">This matching question could not be read. Please contact the instructor.</p>
+        <label class="muted small">Enter matches manually</label>
+        <input class="answer-input" id="textAnswer" value="${esc(answers[question.id]||'')}" oninput="setTextAnswer(this.value)">`;
+    }
+    const matches=matchingMap(answers[question.id]||'');
+    if(!window.matchingSelectedLabel||!descriptions.some(d=>d.id===window.matchingSelectedLabel))
+        window.matchingSelectedLabel=descriptions.find(d=>!matches[d.id])?.id||descriptions[0].id;
+    const selected=window.matchingSelectedLabel;
+    let html=`<p class="muted">Select a description on the left, then select its matching answer on the right. Select another description to change a match.</p>
+    <div class="matching-layout">
+    <div class="matching-column"><h4>Descriptions (${descriptions.length})</h4>`;
+    for(const d of descriptions){
+        const chosen=matches[d.id];
+        html+=`<button type="button" class="matching-card ${selected===d.id?'matching-active':''} ${chosen?'matching-done':''}" onclick="chooseMatchingLabel('${d.id}')">
+        <span class="matching-code">${d.id}</span><span class="matching-description">${esc(d.text)}</span>
+        <span class="matching-pair">${chosen?'Matched: '+esc(chosen):'Select answer'}</span></button>`;
+    }
+    html+=`</div><div class="matching-column"><h4>Answer bank (${choices.length})</h4>`;
+    for(const c of choices){
+        const usedBy=Object.keys(matches).find(k=>matches[k]===c.id);
+        const isCurrent=matches[selected]===c.id;
+        html+=`<button type="button" class="matching-card ${isCurrent?'matching-active':''} ${usedBy?'matching-used':''}" onclick="assignMatchingAnswer('${c.id}')">
+        <span class="matching-code">${c.id}</span><span class="matching-description">${esc(c.text)}</span>
+        <span class="matching-pair">${isCurrent?'Matched to '+selected:usedBy?'Used by '+esc(usedBy):'Click to match '+selected}</span></button>`;
+    }
+    const count=Object.keys(matches).length;
+    html+=`</div></div><div class="matching-summary">${count} of ${descriptions.length} descriptions matched</div>`;
+    return html;
+}
+function chooseMatchingLabel(label){
+    window.matchingSelectedLabel=label;
+    renderQuestion();
+}
+function assignMatchingAnswer(answerId){
+    const question=q();
+    if(!question||question.type!=='matching')return;
+    const parsed=parseMatchingPrompt(question.prompt);
+    const selected=window.matchingSelectedLabel;
+    if(!selected)return;
+    const matches=matchingMap(answers[question.id]||'');
+    const existingOwner=Object.keys(matches).find(k=>matches[k]===answerId&&k!==selected);
+    if(existingOwner){
+        toast('This answer is already matched to '+existingOwner+'. Select a different answer.');
+        return;
+    }
+    matches[selected]=answerId;
+    const ordered=parsed.descriptions
+        .filter(d=>matches[d.id])
+        .map(d=>d.id+'='+matches[d.id]);
+    setTextAnswer(ordered.join('; '));
+    const next=parsed.descriptions.find(d=>!matches[d.id]);
+    window.matchingSelectedLabel=next?next.id:selected;
+    renderQuestion();
+}
+
+function renderQuestion(){const question=q();const type=question.type;let html=`<div class="qmeta"><span class="pill">Week ${esc(question.week??'—')}</span><span class="pill gray">${esc(type.replace('_',' '))}</span><span class="marks">${esc(question.marks??1)} mark(s)</span></div><h3 class="prompt">${esc(question.prompt)}</h3>${imageHtml(question.image)}<div class="answer-area">`;
+if(['mcq','image_mcq','true_false','fill_blank'].includes(type)){let opts=question.options||[{id:'true',text:'True'},{id:'false',text:'False'}];html+=opts.map(o=>`<div role="radio" aria-checked="${String(answers[question.id]??'')===String(o.id)}" tabindex="0" class="option ${String(answers[question.id]??'')===String(o.id)?'selected':''}" data-question-id="${esc(question.id)}" data-option-id="${esc(String(o.id))}" onclick="selectOptionElement(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectOptionElement(this)}"><span class="radio"></span><div><b>${esc(o.id)}.</b> ${esc(o.text||'')}${imageHtml(o.image,'opt-img')}</div></div>`).join('')}
+else if(type==='short_answer'){html+=`<label class="muted small">Your response · concise explanation</label><textarea id="textAnswer" placeholder="Write your answer here…" oninput="setTextAnswer(this.value)">${esc(answers[question.id]||'')}</textarea>`}
+else if(type==='matching'){html+=matchingInterface(question)}
+else{html+=`<label class="muted small">Your answer</label><input class="answer-input" id="textAnswer" value="${esc(answers[question.id]||'')}" placeholder="Type your answer…" oninput="setTextAnswer(this.value)">`}
+html+='</div>'; $('questionCard').innerHTML=html;$('prevBtn').disabled=idx===0;$('nextBtn').textContent=idx===exam.questions.length-1?'Go to review →':'Save & next →';$('reviewBtn').textContent=flags.has(question.id)?'★ Remove review flag':'☆ Mark for review';updateStats()}
+function selectOptionElement(el){if(!el)return;setAnswer(el.dataset.questionId,el.dataset.optionId)}
+function setAnswer(id,val){answers[id]=val;persist();renderQuestion();}function setTextAnswer(val){answers[q().id]=val;persist();updateStats()}
+function persist(){pywebview.api.save_draft({answers,flags:[...flags],idx,deadline}).then(()=>{$('saveStatus').textContent='✓ Saved locally';}).catch(()=>{$('saveStatus').textContent='Local save pending';});updateStats()}
+function navigate(delta){if(idx+delta<0)return;if(idx+delta>=exam.questions.length){showReview();return}idx+=delta;persist();renderQuestion()}function goTo(i){idx=i;renderQuestion();persist()}function toggleReview(){const id=q().id;if(flags.has(id))flags.delete(id);else flags.add(id);persist();renderQuestion();toast(flags.has(id)?'Marked for review':'Review flag removed')}
+function showReview(){if(!exam)return;$('examView').classList.add('hidden');$('reviewView').classList.remove('hidden');let n=exam.questions.filter(answered).length;$('reviewAnswered').textContent=n;$('reviewUnanswered').textContent=exam.questions.length-n;$('reviewList').innerHTML=exam.questions.map((question,i)=>`<div class="review-item"><h4>Question ${i+1} ${flags.has(question.id)?' · ⚑ Review':''}</h4><p>${esc(question.prompt.slice(0,140))}${question.prompt.length>140?'…':''}</p><div class="muted small">${answered(question)?'Answered':'Unanswered'} · ${esc(question.marks??1)} mark(s)</div><button class="secondary" style="margin-top:12px" onclick="goReviewQuestion(${i})">${answered(question)?'Review answer':'Answer question'}</button></div>`).join('')}
+function goReviewQuestion(i){idx=i;$('reviewView').classList.add('hidden');$('examView').classList.remove('hidden');renderQuestion()}function backToExam(){$('reviewView').classList.add('hidden');$('examView').classList.remove('hidden');renderQuestion()}
+async function submitExam(){const n=exam.questions.filter(x=>!answered(x)).length;if(!confirm(`Submit your exam now?\nUnanswered questions: ${n}\n\nYou will choose where to save your encrypted submission file.`))return;try{const studentId=prompt('Enter your student ID or exam roll number:');if(studentId===null||!studentId.trim())return;const save=await pywebview.api.choose_submission_path(studentId.trim());if(!save||!save.ok||!save.path){if(save&&save.error)alert(save.error);return;}const r=await pywebview.api.submit({answers,flags:[...flags],student_id:studentId.trim(),output_path:save.path});if(r&&r.ok){clearInterval(timerHandle);document.body.innerHTML=`<header class="topbar"><div class="brand"><div class="logo">✓</div><div><h1>Submission saved</h1><small>MAJU · Offline Examination Portal</small></div></div></header><main class="welcome"><div class="eyebrow">Submission complete</div><h2>Your encrypted submission has been created.</h2><p>${esc(r.path)}</p><p>Give this file to your instructor as instructed. Do not edit or rename the file contents.</p></main>`}else if(r&&r.error)alert(r.error)}catch(e){alert('Submission failed: '+e)}}
+function tick(){clearInterval(timerHandle);function run(){const s=Math.max(0,Math.floor((deadline-Date.now())/1000));$('timer').textContent=`${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;if(s<=0){clearInterval(timerHandle);alert('Time has expired. Your exam will be submitted.');submitExam()}}run();timerHandle=setInterval(run,1000)}function zoomImage(src){$('modalImage').src=src;$('imageModal').classList.add('open')}function closeImage(){$('imageModal').classList.remove('open')}document.addEventListener('keydown',e=>{if(e.key==='Escape')closeImage();if(!exam||$('examView').classList.contains('hidden'))return;if(e.altKey&&e.key==='ArrowLeft')navigate(-1);if(e.altKey&&e.key==='ArrowRight')navigate(1)});
+</script></body></html>'''
+
+
+class StudentBridge:
+    def __init__(self):
+        self.exam = None
+        self.answers = {}
+        self.flags = []
+        self.idx = 0
+        self.deadline = None
+        self.exam_file = None
+        self.temp_dir = tempfile.mkdtemp(prefix="agentic_exam_")
+        self._window = None
+
+    def choose_exam_file(self):
+        """Use pywebview's native dialog, not Tkinter from the JS worker thread."""
+        try:
+            result = self._window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                allow_multiple=False,
+                file_types=('Exam package (*.exam;*.zip)', 'All files (*.*)'),
+            )
+            if not result:
+                return {"ok": False}
+            return {"ok": True, "path": result[0]}
+        except Exception as exc:
+            return {"ok": False, "error": f"Could not open file picker: {exc}"}
+
+    def choose_submission_path(self, student_id):
+        """Open a native Save As dialog for the encrypted submission file."""
+        try:
+            safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(student_id)).strip("_") or "student"
+            default_name = f"{safe_id}_submission.submission"
+            result = self._window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                save_filename=default_name,
+                file_types=("Encrypted submission (*.submission)", "All files (*.*)"),
+            )
+            if not result:
+                return {"ok": False}
+            if isinstance(result, (tuple, list)):
+                result = result[0] if result else None
+            if not result:
+                return {"ok": False}
+            output_path = Path(result)
+            if output_path.suffix.lower() != ".submission":
+                output_path = output_path.with_suffix(".submission")
+            return {"ok": True, "path": str(output_path)}
+        except Exception as exc:
+            return {"ok": False, "error": f"Could not open Save As dialog: {exc}"}
+
+    def open_exam(self, path, password):
+        if not path or not password:
+            return {"ok": False, "error": "Exam file and password are required."}
+        try:
+            self.exam = open_exam_package(path, password, self.temp_dir)
+        except Exception as exc:
+            return {"ok": False, "error": f"Cannot open exam: {exc}"}
+        self.exam_file = path
+        self.answers = {}
+        self.flags = []
+        self.idx = 0
+        duration = int(self.exam.get("duration_minutes", 45)) * 60
+        self.deadline = time.time() + duration
+        return {
+            "ok": True,
+            "exam": self._web_exam(self.exam),
+            "answers": self.answers,
+            "flags": self.flags,
+            "remaining_seconds": duration,
+        }
+
+    def _web_exam(self, exam):
+        data = dict(exam)
+        data["questions"] = []
+        for q in exam.get("questions", []):
+            item = dict(q)
+            if item.get("image"):
+                image_value = item["image"]
+                if isinstance(image_value, str) and image_value.startswith("data:image/"):
+                    item["image"] = image_value
+                else:
+                    item["image"] = str(Path(image_value).resolve())
+            item["options"] = [dict(o) for o in item.get("options", [])]
+            for option in item["options"]:
+                if option.get("image"):
+                    image_value = option["image"]
+                    if isinstance(image_value, str) and image_value.startswith("data:image/"):
+                        option["image"] = image_value
+                    else:
+                        option["image"] = str(Path(image_value).resolve())
+            data["questions"].append(item)
+        return data
+
+    def save_draft(self, state):
+        self.answers = state.get("answers", self.answers)
+        self.flags = state.get("flags", self.flags)
+        self.idx = int(state.get("idx", self.idx))
+        # The local draft is stored in the app's temporary session directory.
+        draft = {
+            "answers": self.answers,
+            "flags": self.flags,
+            "idx": self.idx,
+            "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        Path(self.temp_dir, "draft.json").write_text(
+            json.dumps(draft, ensure_ascii=False), encoding="utf-8"
+        )
+        return {"ok": True}
+
+    def submit(self, state):
+        if not self.exam:
+            return {"ok": False, "error": "No exam is open."}
+        self.answers = state.get("answers", self.answers)
+        self.flags = state.get("flags", self.flags)
+        output_path = state.get("output_path")
+        student_id = str(state.get("student_id", "")).strip()
+        if not output_path:
+            return {"ok": False, "error": "Choose where to save the submission file."}
+        if not student_id:
+            return {"ok": False, "error": "Student ID is required to submit."}
+        output_path = Path(output_path).expanduser().resolve()
+        if output_path.suffix.lower() != ".submission":
+            output_path = output_path.with_suffix(".submission")
+        if not output_path.parent.is_dir():
+            return {"ok": False, "error": "The selected destination folder does not exist."}
+        if output_path.exists():
+            return {"ok": False, "error": "A file already exists at that location. Choose a different filename."}
+        public_key_path = self.exam.get("_public_key_path")
+        if not public_key_path or not Path(public_key_path).is_file():
+            return {
+                "ok": False,
+                "error": "The instructor public key is missing. Recreate the exam package after generating instructor keys.",
+            }
+        payload = {
+            "schema": 1,
+            "attempt_id": str(uuid.uuid4()),
+            "student_id": student_id,
+            "exam_id": self.exam.get("exam_id", self.exam.get("title", "agentic-midterm")),
+            "exam_title": self.exam.get("title", "Agentic AI Midterm"),
+            "submitted_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "answers": self.answers,
+            "review_flags": self.flags,
+        }
+        try:
+            encrypted = encrypt_submission(
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                public_key_path,
+            )
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(encrypted)
+            return {"ok": True, "path": str(output_path)}
+        except Exception as exc:
+            return {"ok": False, "error": f"Could not encrypt submission: {exc}"}
+
+
+def main():
+    bridge = StudentBridge()
+    bridge._window = webview.create_window(
+        APP_TITLE, html=HTML, js_api=bridge, width=1360, height=900,
+        min_size=(900, 650), background_color="#f3f6fb",
+    )
+    webview.start(debug=False)
+
+
+if __name__ == "__main__":
+    main()
